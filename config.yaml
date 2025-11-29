@@ -1,0 +1,10 @@
+upstream_servers:
+  - id: "weather"
+    description: "Weather MCP server (example)"
+    type: "stdio"
+    command: "python upstream_servers/weather_server.py"
+
+  - id: "fs"
+    description: "Filesystem MCP server (example)"
+    type: "stdio"
+    command: "python upstream_servers/fs_server.py"
