@@ -14,5 +14,4 @@ proxy_core_config.json
 
 # Logs (future-proof)
 *.log
-c
 
