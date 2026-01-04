@@ -1,0 +1,48 @@
+{
+  "db_path": "proxy_cache.sqlite",
+  "listen": { "host": "0.0.0.0", "port": 8765 },
+
+  "cache_gc": {
+    "enabled": true,
+    "on_startup": true,
+    "interval_s": 60
+  },
+
+  "defaults": {
+    "cache_ttl_s": 0,
+    "timeouts_s": {
+      "initialize": 60,
+      "tools/list": 60,
+      "tools/call": 180
+    }
+  },
+
+  "cache_key_policy": {
+    "enabled": true,
+    "tools_call": {
+      "ignore_argument_keys": ["lang", "limit"],
+      "default_argument_values": { "lang": "en" }
+    }
+  },
+
+  "servers": {
+    "wiki": {
+      "cmd": ["npx", "-y", "wikipedia-mcp-server"],
+      "cache_ttl_s": 86400,
+      "timeouts_s": {
+        "initialize": 60,
+        "tools/list": 60,
+        "tools/call": 180
+      }
+    },
+    "open-meteo": {
+      "cmd": ["npx", "-y", "open-meteo-mcp-server"],
+      "cache_ttl_s": 600,
+      "timeouts_s": {
+        "initialize": 60,
+        "tools/list": 60,
+        "tools/call": 180
+      }
+    }
+  }
+}
