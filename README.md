@@ -104,7 +104,7 @@ The proxy is configured using a JSON file.
   "listen": { "host": "0.0.0.0", "port": 8765 },
 
   "defaults": {
-    "cache_ttl_s": 0,
+    "cache_ttl_s": 3600,
     "timeouts_s": {
       "initialize": 60,
       "tools/list": 60,
