@@ -43,6 +43,25 @@
         "tools/list": 60,
         "tools/call": 180
       }
+    },
+
+    "unit-converter": {
+      "cmd": ["uvx", "unit-converter-mcp"],
+      "cache_ttl_s": 86400,
+      "timeouts_s": {
+        "initialize": 60,
+        "tools/list": 60,
+        "tools/call": 180
+      }
+    },
+    "calculator": {
+      "cmd": ["uvx", "mcp-server-calculator"],
+      "cache_ttl_s": 86400,
+      "timeouts_s": {
+        "initialize": 60,
+        "tools/list": 60,
+        "tools/call": 180
+      }
     }
   }
 }

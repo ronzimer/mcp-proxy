@@ -4,7 +4,7 @@ import json
 import socket
 import argparse
 import platform
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 def log(msg: str) -> None:
@@ -30,6 +30,7 @@ def core_request(host: str, port: int, payload: Dict[str, Any], timeout_s: float
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(timeout_s)
+
     try:
         s.connect((host, port))
         f_in = s.makefile("r", encoding="utf-8")
@@ -40,10 +41,19 @@ def core_request(host: str, port: int, payload: Dict[str, Any], timeout_s: float
 
         line = f_in.readline()
         if not line:
-            return {"id": payload.get("id"), "error": {"code": -32010, "message": "No response from proxy-core"}}
+            return {
+                "id": payload.get("id"),
+                "error": {"code": -32010, "message": "No response from proxy-core"},
+            }
+
         return json.loads(line)
+
     except Exception as e:
-        return {"id": payload.get("id"), "error": {"code": -32011, "message": f"proxy-core connection failed: {e!r}"}}
+        return {
+            "id": payload.get("id"),
+            "error": {"code": -32011, "message": f"proxy-core connection failed: {e!r}"},
+        }
+
     finally:
         try:
             s.close()
@@ -54,11 +64,17 @@ def core_request(host: str, port: int, payload: Dict[str, Any], timeout_s: float
 def main() -> None:
     """
     Claude-facing MCP server process.
-    This endpoint presents itself as a normal MCP server (wiki/open-meteo/etc.),
-    but delegates all real work to proxy-core over TCP.
+
+    This endpoint presents itself as a normal MCP server process, but delegates
+    all real work to proxy-core over TCP.
+
+    Important:
+    - The endpoint does not inject proxy management tools into real servers.
+    - If server_id == "proxy", proxy-core handles it as a virtual management server.
+    - If server_id is calculator/wiki/open-meteo/etc., proxy-core routes it to the real upstream.
     """
     ap = argparse.ArgumentParser()
-    ap.add_argument("--server-id", required=True, help="Upstream server identifier (e.g., wiki, open-meteo)")
+    ap.add_argument("--server-id", required=True, help="Upstream server identifier or virtual server id 'proxy'")
     ap.add_argument("--core-host", default="127.0.0.1")
     ap.add_argument("--core-port", type=int, default=8765)
     ap.add_argument("--caller-id", default=None, help="Optional caller id for proxy-core logging/caching")
@@ -84,35 +100,34 @@ def main() -> None:
         msg_id = msg.get("id")
         params = msg.get("params") or {}
 
-        # Claude expects a fast initialize response.
         if method == "initialize":
-            # Best-effort forward to proxy-core (do not block UI if core is slow).
-            try:
-                _ = core_request(host, port, {
-                    "op": "initialize",
-                    "server_id": server_id,
-                    "id": msg_id,
-                    "params": params,
-                    "caller_id": caller_id,
-                }, timeout_s=3.0)
-            except Exception as e:
-                log(f"proxy-core initialize failed: {e!r}")
-
-            init_resp = {
-                "jsonrpc": "2.0",
+            resp = core_request(host, port, {
+                "op": "initialize",
+                "server_id": server_id,
                 "id": msg_id,
-                "result": {
-                    "protocolVersion": params.get("protocolVersion", "2025-06-18"),
-                    "capabilities": {"tools": {"listChanged": True}},
-                    "serverInfo": {
-                        "name": server_id,
-                        "version": "0.1.0",
-                        # Keep it subtle: visible servers look normal; proxy presence is only a hint.
-                        "description": "Managed via proxy-core",
+                "params": params,
+                "caller_id": caller_id,
+            }, timeout_s=6.0)
+
+            if "result" in resp:
+                out = {"jsonrpc": "2.0", "id": msg_id, "result": resp["result"]}
+            else:
+                # Fallback for UI friendliness if proxy-core is slow/unavailable.
+                out = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {
+                        "protocolVersion": params.get("protocolVersion", "2025-06-18"),
+                        "capabilities": {"tools": {"listChanged": True}},
+                        "serverInfo": {
+                            "name": server_id,
+                            "version": "0.1.0",
+                            "description": "Managed via proxy-core",
+                        },
                     },
-                },
-            }
-            sys.stdout.write(json.dumps(init_resp) + "\n")
+                }
+
+            sys.stdout.write(json.dumps(out) + "\n")
             sys.stdout.flush()
             continue
 
@@ -123,11 +138,17 @@ def main() -> None:
                 "id": msg_id,
                 "params": params,
                 "caller_id": caller_id,
-            })
+            }, timeout_s=6.0)
+
             if "result" in resp:
                 out = {"jsonrpc": "2.0", "id": msg_id, "result": resp["result"]}
             else:
-                out = {"jsonrpc": "2.0", "id": msg_id, "error": resp.get("error", {"code": -32000, "message": "tools/list failed"})}
+                out = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": resp.get("error", {"code": -32000, "message": "tools/list failed"}),
+                }
+
             sys.stdout.write(json.dumps(out) + "\n")
             sys.stdout.flush()
             continue
@@ -139,16 +160,21 @@ def main() -> None:
                 "id": msg_id,
                 "params": params,
                 "caller_id": caller_id,
-            }, timeout_s=20.0)
+            }, timeout_s=30.0)
+
             if "result" in resp:
                 out = {"jsonrpc": "2.0", "id": msg_id, "result": resp["result"]}
             else:
-                out = {"jsonrpc": "2.0", "id": msg_id, "error": resp.get("error", {"code": -32000, "message": "tools/call failed"})}
+                out = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": resp.get("error", {"code": -32000, "message": "tools/call failed"}),
+                }
+
             sys.stdout.write(json.dumps(out) + "\n")
             sys.stdout.flush()
             continue
 
-        # Minimal implementation: ignore methods you don't need yet.
         log(f"Ignoring unsupported method: {method!r}")
 
 
